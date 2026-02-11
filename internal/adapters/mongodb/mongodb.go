@@ -3,6 +3,7 @@ package mongodb
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"go.mongodb.org/mongo-driver/mongo"
@@ -11,13 +12,20 @@ import (
 
 // Presentation
 type mongoDB struct {
-	db *mongo.Client
+	connect *mongo.Client
+	nameDB  string
 }
 
 // Interface
 type MongoDBI interface {
-	// Close db connect
+	// Close db connect.
 	Close() error
+	// Check-create DB.
+	CheckCreateDB(collections []string) error
+	// Drop collection by name.
+	DropCollection(collectionName string) error
+	// Get names of collections.
+	GetNamesCollections() (names []string, err error)
 }
 
 // Constructor.
@@ -26,6 +34,10 @@ func New(dsn string) (MongoDBI, error) {
 	// Check
 	if dsn == "" {
 		return nil, ErrEmptyValueDSN
+	}
+	parts := strings.Split(dsn, "/")
+	if len(parts) < 2 {
+		return nil, ErrNotCorrectDSN
 	}
 
 	// Connect
@@ -46,7 +58,10 @@ func New(dsn string) (MongoDBI, error) {
 	}
 
 	// Instance
+	nameDB := parts[len(parts)-1]
+
 	return &mongoDB{
-		db: client,
+		connect: client,
+		nameDB:  nameDB,
 	}, nil
 }
