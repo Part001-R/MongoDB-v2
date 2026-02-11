@@ -115,6 +115,7 @@ func TestGetNamesCollections(t *testing.T) {
 		assert.NotEqualf(t, 0, len(rxBefore), "Empty list before drop")
 		assert.NotEqualf(t, 0, len(rxAfter), "Empty list after drop")
 		assert.NotEqualf(t, len(rxBefore), len(rxAfter), "Values is equals")
+		assert.Equalf(t, collections[1], rxAfter[0], "Names is not equals")
 	})
 
 }

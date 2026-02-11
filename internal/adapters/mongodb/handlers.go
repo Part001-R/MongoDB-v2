@@ -40,8 +40,24 @@ func (m *mongoDB) CheckCreateDB(collections []string) error {
 		return ErrEmptyCollectionsNames
 	}
 
+	// Get collections names
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	database := m.connect.Database(m.nameDB)
+
+	names, err := database.ListCollectionNames(ctx, bson.M{})
+	if err != nil {
+		return fmt.Errorf("failed to list collection names: %v", err)
+	}
+
 	// Create collections
 	for _, v := range collections {
+
+		if IsExistsCollection(names, v) {
+			continue
+		}
+
 		collection := m.connect.Database(m.nameDB).Collection(v)
 
 		doc := bson.D{
