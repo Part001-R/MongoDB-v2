@@ -35,6 +35,8 @@ type MongoDBI interface {
 	RecvDocumentUserByName(collectionName string, name string) (doc DocUser, err error)
 	// Delete document user by name
 	DelDocumentUserByName(collectionName string, name string) (int64, error)
+	// Relocate document
+	MoveDocumentUser(srcCollection, destCollection string, doc DocUser) error
 }
 
 // Constructor.

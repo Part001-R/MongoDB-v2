@@ -479,3 +479,109 @@ func TestDelDocumentUserByName(t *testing.T) {
 
 	})
 }
+
+// Test MoveDocumentUser
+func TestMoveDocumentUser(t *testing.T) {
+
+	dsn := "mongodb://localhost:27017/myDatabase"
+
+	db, err := New(dsn)
+	require.NoErrorf(t, err, "Unexpected error New")
+	require.NotNil(t, db, "Pointer db is nil")
+
+	defer func() {
+		err = db.Close()
+		assert.NoErrorf(t, err, "Unexpected error Close")
+	}()
+
+	collections := []string{"info-1", "info-2"}
+
+	err = db.CheckCreateDB(collections)
+	require.NoErrorf(t, err, "Unexpected error CheckCreateDB")
+
+	defer func() {
+		err := db.DropCollection(collections[0])
+		require.NoErrorf(t, err, "Unexpected error CheckCreateDB 0")
+
+		err = db.DropCollection(collections[1])
+		require.NoErrorf(t, err, "Unexpected error CheckCreateDB 1")
+	}()
+
+	t.Run("Missing srcCollection name", func(t *testing.T) {
+
+		srcCollection := ""
+		destCollection := collections[1]
+		doc := DocUser{
+			Name:  "A",
+			Age:   30,
+			Email: "A@mail.mail",
+		}
+
+		err := db.MoveDocumentUser(srcCollection, destCollection, doc)
+		require.Equalf(t, ErrEmptyCollectionsName, err, "Error is not equal")
+	})
+
+	t.Run("Missing destCollection name", func(t *testing.T) {
+
+		srcCollection := collections[0]
+		destCollection := ""
+		doc := DocUser{
+			Name:  "A",
+			Age:   30,
+			Email: "A@mail.mail",
+		}
+
+		err := db.MoveDocumentUser(srcCollection, destCollection, doc)
+		require.Equalf(t, ErrEmptyCollectionsName, err, "Error is not equal")
+	})
+
+	t.Run("Missing name", func(t *testing.T) {
+
+		srcCollection := collections[0]
+		destCollection := collections[1]
+		doc := DocUser{
+			Name:  "",
+			Age:   30,
+			Email: "A@mail.mail",
+		}
+
+		err := db.MoveDocumentUser(srcCollection, destCollection, doc)
+		require.Equalf(t, ErrEmptyValueName, err, "Error is not equal")
+	})
+
+	t.Run("Correct", func(t *testing.T) {
+
+		srcCollection := collections[0]
+		destCollection := collections[1]
+		doc := DocUser{
+			Name:  "A",
+			Age:   30,
+			Email: "A@mail.mail",
+		}
+
+		// Create
+		_, err := db.SendDocumentUser(srcCollection, doc)
+		require.NoErrorf(t, err, "Unexpected error send")
+
+		// Check exists
+		_, err = db.RecvDocumentUserByName(srcCollection, doc.Name)
+		require.NoErrorf(t, err, "Document was not found after creation")
+
+		// Relocating
+		err = db.MoveDocumentUser(srcCollection, destCollection, doc)
+		require.NoErrorf(t, err, "Unexpected error move")
+
+		// Receive
+		rxDoc, err := db.RecvDocumentUserByName(destCollection, doc.Name)
+		require.NoErrorf(t, err, "Unexpected error receive")
+
+		// Check
+		assert.Equalf(t, doc.Name, rxDoc.Name, "Name is not equal")
+		assert.Equalf(t, doc.Age, rxDoc.Age, "Age is not equal")
+		assert.Equalf(t, doc.Email, rxDoc.Email, "Email is not equal")
+
+		_, err = db.RecvDocumentUserByName(srcCollection, doc.Name)
+		require.Error(t, err, "Document should be deleted from source collection")
+	})
+
+}
