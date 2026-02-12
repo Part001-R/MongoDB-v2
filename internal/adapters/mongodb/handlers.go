@@ -3,10 +3,10 @@ package mongodb
 import (
 	"context"
 	"fmt"
-	"log"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
 )
 
 // Close db connect. Return error.
@@ -26,7 +26,7 @@ func (d *mongoDB) Close() error {
 //
 // Params:
 //
-//	collections - list of collections name.
+//	collections - list of collections names.
 func (m *mongoDB) CheckCreateDB(collections []string) error {
 
 	// Check
@@ -44,9 +44,7 @@ func (m *mongoDB) CheckCreateDB(collections []string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	database := m.connect.Database(m.nameDB)
-
-	names, err := database.ListCollectionNames(ctx, bson.M{})
+	names, err := m.db.ListCollectionNames(ctx, bson.M{})
 	if err != nil {
 		return fmt.Errorf("failed to list collection names: %v", err)
 	}
@@ -79,6 +77,7 @@ func (m *mongoDB) CheckCreateDB(collections []string) error {
 //
 //	collectionName - collection name.
 func (m *mongoDB) DropCollection(collectionName string) error {
+
 	// Check
 	if collectionName == "" {
 		return ErrEmptyValueName
@@ -88,17 +87,13 @@ func (m *mongoDB) DropCollection(collectionName string) error {
 	}
 
 	// Logic
-	collection := m.connect.Database(m.nameDB).Collection(collectionName)
-
-	// Логируем название коллекции
-	log.Printf("Attempting to drop collection: %s from database: %s", collectionName, m.nameDB)
+	collection := m.db.Collection(collectionName)
 
 	err := collection.Drop(context.Background())
 	if err != nil {
 		return fmt.Errorf("failed to drop collection: <%w>", err)
 	}
 
-	log.Printf("Successfully dropped collection: %s", collectionName)
 	return nil
 }
 
@@ -117,12 +112,188 @@ func (m *mongoDB) GetNamesCollections() (names []string, err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	database := m.connect.Database(m.nameDB)
-
-	names, err = database.ListCollectionNames(ctx, bson.M{})
+	names, err = m.db.ListCollectionNames(ctx, bson.M{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list collection names: %v", err)
 	}
 
 	return names, nil
+}
+
+// Send the document user on DB. Returns id added document and error.
+//
+// Params:
+//
+//	collectionName - name of collection
+//	doc - document
+func (m *mongoDB) SendDocumentUser(collectionName string, doc DocUser) (id interface{}, err error) {
+
+	// Check
+	if m.db == nil {
+		return nil, ErrNilPtrDB
+	}
+	if m.connect == nil {
+		return nil, ErrNilPtrConnect
+	}
+	if collectionName == "" {
+		return nil, ErrEmptyCollectionsName
+	}
+	if doc.Age <= 0 && doc.Email == "" && doc.Name == "" {
+		return nil, ErrEmptyDocument
+	}
+	if doc.Age <= 0 {
+		return nil, ErrValueAge
+	}
+
+	// Сheck exists document
+	collection := m.db.Collection(collectionName)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	var existingDoc DocUser
+	filter := bson.M{"name": doc.Name, "age": doc.Age, "email": doc.Email}
+	err = collection.FindOne(ctx, filter).Decode(&existingDoc)
+
+	if err == nil {
+		return nil, ErrDocumentExists
+	}
+	if err != mongo.ErrNoDocuments {
+		return nil, fmt.Errorf("Function FindOne, return error: <%w>", err)
+	}
+
+	// Send
+	result, err := collection.InsertOne(ctx, doc)
+	if err != nil {
+		return nil, fmt.Errorf("Function InsertOne, returned error: <%w>", err)
+	}
+
+	return result.InsertedID, nil
+}
+
+// Update the document user on DB. Returns id added document and error.
+//
+// Params:
+//
+//	collectionName - name of collection
+//	name - name of user
+//	doc - document
+func (m *mongoDB) UpdateDocumentUserByName(collectionName, name string, doc DocUser) (err error) {
+
+	// Check
+	if m.db == nil {
+		return ErrNilPtrDB
+	}
+	if m.connect == nil {
+		return ErrNilPtrConnect
+	}
+	if collectionName == "" {
+		return ErrEmptyCollectionsName
+	}
+	if name == "" {
+		return ErrEmptyValueName
+	}
+	if doc.Age <= 0 && doc.Email == "" && doc.Name == "" {
+		return ErrEmptyDocument
+	}
+	if doc.Age <= 0 {
+		return ErrValueAge
+	}
+
+	// Logic
+	collection := m.db.Collection(collectionName)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	filter := bson.M{"name": name}
+
+	update := bson.M{"$set": doc}
+
+	result, err := collection.UpdateOne(ctx, filter, update)
+	if err != nil {
+		return fmt.Errorf("Function UpdateOne, returned error: <%w>", err)
+	}
+
+	if result.MatchedCount == 0 {
+		return ErrUpdateDocument
+	}
+
+	return nil
+}
+
+// Recieve document user by name. Returns document and error.
+//
+// Params:
+//
+//	collectionName - name of collection
+//	name - name
+func (m *mongoDB) RecvDocumentUserByName(collectionName string, name string) (doc DocUser, err error) {
+
+	// Check
+	if m.db == nil {
+		return DocUser{}, ErrNilPtrDB
+	}
+	if m.connect == nil {
+		return DocUser{}, ErrNilPtrConnect
+	}
+	if collectionName == "" {
+		return DocUser{}, ErrEmptyCollectionsName
+	}
+	if name == "" {
+		return DocUser{}, ErrEmptyValueName
+	}
+
+	// Logic
+	collection := m.db.Collection(collectionName)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	filter := bson.M{"name": name}
+
+	err = collection.FindOne(ctx, filter).Decode(&doc)
+	if err != nil {
+		return DocUser{}, fmt.Errorf("Function FindOne return error: <%w>", err)
+	}
+
+	return doc, nil
+}
+
+// Delete document user by name. Returns document and error.
+//
+// Params:
+//
+//	collectionName - name of collection
+//	name - name
+func (m *mongoDB) DelDocumentUserByName(collectionName string, name string) (int64, error) {
+
+	// Check
+	if m.db == nil {
+		return 0, ErrNilPtrDB
+	}
+	if m.connect == nil {
+		return 0, ErrNilPtrConnect
+	}
+	if collectionName == "" {
+		return 0, ErrEmptyCollectionsName
+	}
+	if name == "" {
+		return 0, ErrEmptyValueName
+	}
+
+	// Logic
+	collection := m.db.Collection(collectionName)
+
+	filter := bson.M{"name": name}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	result, err := collection.DeleteOne(ctx, filter)
+	if err != nil {
+		return 0, fmt.Errorf("failed to delete document: <%w>", err)
+	}
+
+	return result.DeletedCount, nil
 }

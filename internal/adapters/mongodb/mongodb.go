@@ -14,6 +14,7 @@ import (
 type mongoDB struct {
 	connect *mongo.Client
 	nameDB  string
+	db      *mongo.Database
 }
 
 // Interface
@@ -26,6 +27,14 @@ type MongoDBI interface {
 	DropCollection(collectionName string) error
 	// Get names of collections.
 	GetNamesCollections() (names []string, err error)
+	// Send new document user
+	SendDocumentUser(collectionName string, doc DocUser) (id interface{}, err error)
+	// Update document user by name
+	UpdateDocumentUserByName(collectionName, name string, doc DocUser) (err error)
+	// Recieve document user by name
+	RecvDocumentUserByName(collectionName string, name string) (doc DocUser, err error)
+	// Delete document user by name
+	DelDocumentUserByName(collectionName string, name string) (int64, error)
 }
 
 // Constructor.
@@ -59,9 +68,11 @@ func New(dsn string) (MongoDBI, error) {
 
 	// Instance
 	nameDB := parts[len(parts)-1]
+	db := client.Database(nameDB)
 
 	return &mongoDB{
 		connect: client,
 		nameDB:  nameDB,
+		db:      db,
 	}, nil
 }
