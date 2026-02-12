@@ -305,7 +305,7 @@ func (m *mongoDB) DelDocumentUserByName(collectionName string, name string) (int
 //	srcCollection - source collection
 //	destCollection - destination collection
 //	doc - document
-func (m *mongoDB) MoveDocumentUser(srcCollection, destCollection string, doc DocUser) error {
+func (m *mongoDB) MoveDocumentUserTx(srcCollection, destCollection string, doc DocUser) error {
 
 	//
 	// Check
@@ -331,31 +331,46 @@ func (m *mongoDB) MoveDocumentUser(srcCollection, destCollection string, doc Doc
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
+	session, err := m.connect.StartSession()
+	if err != nil {
+		return fmt.Errorf("Error stsrt session: <%v>", err)
+	}
+	defer session.EndSession(ctx)
+
 	sourceCollection := m.db.Collection(srcCollection)
 	destinationCollection := m.db.Collection(destCollection)
 	filter := bson.M{"name": doc.Name}
 
-	var result bson.M
+	// Transaction
+	_, err = session.WithTransaction(ctx, func(sessCtx mongo.SessionContext) (interface{}, error) {
+		var result bson.M
 
-	// Recieve document
-	err := sourceCollection.FindOne(ctx, filter).Decode(&result)
-	if err != nil {
-		if err == mongo.ErrNoDocuments {
-			return fmt.Errorf("Document is not found: <%v>", err)
+		// Recieve
+		err := sourceCollection.FindOne(sessCtx, filter).Decode(&result)
+		if err != nil {
+			if err == mongo.ErrNoDocuments {
+				return nil, fmt.Errorf("Document is not found: <%v>", err)
+			}
+			return nil, fmt.Errorf("Fault recieve document: <%v>", err)
 		}
-		return fmt.Errorf("Fault recieve document: <%w>", err)
-	}
 
-	// Send document
-	_, err = destinationCollection.InsertOne(ctx, result)
-	if err != nil {
-		return fmt.Errorf("Fault send document: <%w>", err)
-	}
+		// Insert
+		_, err = destinationCollection.InsertOne(sessCtx, result)
+		if err != nil {
+			return nil, fmt.Errorf("Fault insert document: <%v>", err)
+		}
 
-	// Delete document
-	_, err = sourceCollection.DeleteOne(ctx, filter)
+		// Delete
+		_, err = sourceCollection.DeleteOne(sessCtx, filter)
+		if err != nil {
+			return nil, fmt.Errorf("Fault delete document: <%v>", err)
+		}
+
+		return nil, nil
+	})
+
 	if err != nil {
-		return fmt.Errorf("Fault delete document: <%w>", err)
+		return fmt.Errorf("Fault transaction: <%v>", err)
 	}
 
 	return nil

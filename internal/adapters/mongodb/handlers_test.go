@@ -517,7 +517,7 @@ func TestMoveDocumentUser(t *testing.T) {
 			Email: "A@mail.mail",
 		}
 
-		err := db.MoveDocumentUser(srcCollection, destCollection, doc)
+		err := db.MoveDocumentUserTx(srcCollection, destCollection, doc)
 		require.Equalf(t, ErrEmptyCollectionsName, err, "Error is not equal")
 	})
 
@@ -531,7 +531,7 @@ func TestMoveDocumentUser(t *testing.T) {
 			Email: "A@mail.mail",
 		}
 
-		err := db.MoveDocumentUser(srcCollection, destCollection, doc)
+		err := db.MoveDocumentUserTx(srcCollection, destCollection, doc)
 		require.Equalf(t, ErrEmptyCollectionsName, err, "Error is not equal")
 	})
 
@@ -545,7 +545,7 @@ func TestMoveDocumentUser(t *testing.T) {
 			Email: "A@mail.mail",
 		}
 
-		err := db.MoveDocumentUser(srcCollection, destCollection, doc)
+		err := db.MoveDocumentUserTx(srcCollection, destCollection, doc)
 		require.Equalf(t, ErrEmptyValueName, err, "Error is not equal")
 	})
 
@@ -568,7 +568,7 @@ func TestMoveDocumentUser(t *testing.T) {
 		require.NoErrorf(t, err, "Document was not found after creation")
 
 		// Relocating
-		err = db.MoveDocumentUser(srcCollection, destCollection, doc)
+		err = db.MoveDocumentUserTx(srcCollection, destCollection, doc)
 		require.NoErrorf(t, err, "Unexpected error move")
 
 		// Receive
